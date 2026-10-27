@@ -1,9 +1,10 @@
-from typing import Type
+from multiprocessing import Value
+from typing import Type, Union
 import discord
 from discord.ext import commands 
 import random
 from utils import *
-
+import time 
 
 # Blackjack Game Model 
 class BlackjackGame:
@@ -15,6 +16,7 @@ class BlackjackGame:
         self.has_stood = {player1: False, player2: False}
         self.is_won = False
         self.current_player = player1
+        self.last_turn_time = time.time()
     
     def create_deck(self):
         """
@@ -92,7 +94,7 @@ class BlackjackGame:
             discord.Embed: The embed representing the game's current state
         NOTE: This should not be used if the game is in a Won state
         """
-        if self.is_won: raise TypeError("get_game_embed() was called when the game was in a Won state")
+        if self.is_game_over(): raise TypeError("get_game_embed() was called when the game was in a Won state")
         if self.is_bust(self.player1) or self.is_bust(self.player2): raise TypeError("get_game_embed() was called when the game was in a Won state")
 
         # Calculate the average colour of the user's profile picture
@@ -114,7 +116,56 @@ class BlackjackGame:
             color=color
         )
         return embed
+    def get_end_state_embed(self) -> discord.Embed:
+        """
+        Generates an embed for the game when it has ended
+
+        Returns:
+            discord.Embed: The embed in question
+        """
+        if not self.is_game_over(): raise ValueError("get_end_state_embed() was called when game was not in a Won state")
+        # We need to get the scores actually considered for getting the winner
+        p1_scores = self.calculate_score(self.hands[self.player1])
+        p2_scores = self.calculate_score(self.hands[self.player2])
+        p1_score = ""
+        p2_score = ""
+
+        # Case 1. It's a bust
+        description = ""
+        if self.is_bust(self.player1):
+            description = f"{self.player1.mention} has busted! {self.player2.mention} wins!"
+            p1_score = str(min(p1_scores))
+            p2_scores = '/'.join([str(i) for i in p2_scores])
+        elif self.is_bust(self.player2):
+            description = f"{self.player2.mention} has busted! {self.player1.mention} wins!"
+            p2_score = str(min(p2_scores))
+            p1_scores = '/'.join([str(i) for i in p1_scores])
     
+        # Case 2: Both players stood
+        winner = self.get_who_won()
+        if winner:
+            description = f"Both players have stood. {winner.mention} was closer to 21 and wins!"
+        else:
+            description = f"The game has tied."
+        p1_diff = min([abs(i - 21) for i in p1_scores])
+        p2_diff = min([abs(i - 21) for i in p2_scores])
+        p1_score = str(21 - p1_diff)
+        p2_score = str(21 - p2_diff)
+
+        embed = discord.Embed(
+            author=discord.EmbedAuthor(name=f"{self.player1.display_name} vs. {self.player2.display_name}"),
+            thumbnail=winner.avatar.url if winner else self.current_player.avatar.url,
+            description = description,
+            fields=[
+                discord.EmbedField(f"{self.player1.display_name}'s Hand ({p1_score})",
+                                    ''.join([get_emoji(f"{key[0].title()}{key[1]}") for key in self.hands[self.player1]])),
+                discord.EmbedField(f"{self.player2.display_name}'s Hand ({p2_score})",
+                                    ''.join([get_emoji(f"{key[0].title()}{key[1]}") for key in self.hands[self.player2]])),                    
+            ],
+            color=discord.Color.green() if winner else discord.Color.from_rgb(250, 245, 255)
+        )
+        return embed
+        
     def turn(self, did_hit: bool):
         """Modifies internal state to account for turn e.g. dealing card, changing stand counter, modify current player.
         DOES NOT check for wins OR post new game embed
@@ -122,6 +173,7 @@ class BlackjackGame:
         Args:
             did_hit (bool): Whether the current player hit, or if they stood.
         """
+        self.last_turn_time = time.time()
         if not did_hit:
             # 1. Update has_stood
             self.has_stood[self.current_player] = True
@@ -131,8 +183,53 @@ class BlackjackGame:
         # 1. Deal new card
         new_card = self.deck.pop()
         self.hands[self.current_player].append(new_card)
-        # 2. Update current player
+        # 2. Update has_stood
+        self.has_stood[self.current_player] = False
+        # 3. Update current player
         self.current_player = self.player1 if self.current_player == self.player2 else self.player2
+    
+    def is_game_over(self) -> bool:
+        """
+        Should be called directly after turn(). Determines if the game is over to produce a winner or create a tie, or whether the game should progress to 
+        the next turn
+
+        Returns:
+            bool: Whether the game is over            
+        """
+        # Case 1: Both players have stood in their last turn 
+        if self.has_stood.items()[0] and self.has_stood.items()[1]:
+            return True
+        # Case 2: One of the players has bust
+        if self.is_bust(self.player1) or self.is_bust(self.player2):
+            return True 
+        return False
+    
+    def get_who_won(self) -> Union[discord.User, None]:
+        """
+        If the game is in a won state, then determine which player is victorious, or if it is a tie.
+
+        Returns:
+            Union[discord.User, None]: The player who has won the game, or None if it is a tie.
+        """
+        if not self.is_game_over(): raise ValueError("get_who_won() was called when game is not in a won state")
+        # Case 1: One of the players has bust - the other player must be the winner.
+        if self.is_bust(self.player1):
+            return self.player2 
+        elif self.is_bust(self.player2):
+            return self.player1 
+        # Case 2: Both players have stood, so we get who has the closest score to 21 
+        p1_scores = self.calculate_score(self.hands[self.player1])
+        p2_scores = self.calculate_score(self.hands[self.player2])
+
+        p1_diff = min([abs(i - 21) for i in p1_scores])
+        p2_diff = min([abs(i - 21) for i in p2_scores])
+        if p1_diff > p2_diff:
+            return self.player2
+        elif p2_diff > p1_diff:
+            return self.player1
+        else:
+            return None
+
 
 class BlackjackCog(commands.Cog):
     def __init__(self, bot): 
