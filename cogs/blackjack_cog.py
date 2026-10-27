@@ -1,7 +1,7 @@
 from multiprocessing import Value
 from typing import Type, Union
 import discord
-from discord.ext import commands 
+from discord.ext import commands, bridge
 import random
 from utils import *
 import time 
@@ -230,10 +230,33 @@ class BlackjackGame:
         else:
             return None
 
+class RequestBJGameView(discord.ui.View):
+    def __init__(self, player1: discord.User, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.player1 = player1
+    
+    @discord.ui.button(label="✓", style=discord.ButtonStyle.green)
+    async def create_game(self, button: discord.Button, interaction: discord.Interaction):
+        # 1. Make a BlackjackGame instance
+        game = BlackjackGame(self.player1, interaction.user._user)
+        # 2. Add to ongoing games
+        ONGOING_GAMES[interaction.message.id] = game 
+        # 3. Edit message with embed 
+        await interaction.message.edit(game.get_game_embed()) # TODO: Add Blackjack view to this 
+
+ONGOING_GAMES = {}
 
 class BlackjackCog(commands.Cog):
     def __init__(self, bot): 
-        self.bot = bot
+        self.bot = bot    
+    @bridge.bridge_command(description="Challenge someone to a game of Blackjack!")
+    async def bj(self, ctx: bridge.BridgeContext):            
+        await ctx.respond(embed=discord.Embed(
+            description=f"Click the button below to play blackjack with {ctx.author.mention if ctx.is_app else ctx.message.author.mention}",
+            color=discord.Color.blurple()
+        ),view=RequestBJGameView(ctx.author._user if ctx.is_app else ctx.message.author._user))
+
+
     
 def setup(bot):
     bot.add_cog(BlackjackCog(bot))
