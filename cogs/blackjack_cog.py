@@ -197,7 +197,7 @@ class BlackjackGame:
             bool: Whether the game is over            
         """
         # Case 1: Both players have stood in their last turn 
-        if self.has_stood.items()[0] and self.has_stood.items()[1]:
+        if list(self.has_stood.values())[0] and list(self.has_stood.values())[1]:
             return True
         # Case 2: One of the players has bust
         if self.is_bust(self.player1) or self.is_bust(self.player2):
@@ -229,7 +229,52 @@ class BlackjackGame:
             return self.player1
         else:
             return None
-
+        
+class BlackjackGameView(discord.ui.View):
+    def __init__(self, game: BlackjackGame, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.game = game 
+    
+    @discord.ui.button(label="Hit", style=discord.ButtonStyle.blurple)
+    async def hit(self, button: discord.Button, interaction: discord.Interaction):
+        # 1. Make sure that the user is the person is the person whose turn it is
+        if interaction.user._user != self.game.current_player and interaction.user._user in self.game.hands.keys():
+            await interaction.respond("It's not your turn!", ephemeral=True)
+            return
+        elif interaction.user._user != self.game.current_player:
+            await interaction.respond("You're not part of this game!", ephemeral=True)
+        # 2. Process turn
+        self.game.turn(True)
+        # 3. Check if it is a win, and if so, handle win state
+        if self.game.is_won():
+            end_embed = self.game.get_end_state_embed()
+            self.disable_all_items()
+            await interaction.message.edit(embed=end_embed, view=self)
+            return 
+        # 4. Else, continue on with game
+        embed = self.game.get_game_embed()
+        await interaction.message.edit(embed=end_embed, view=self)
+    
+    @discord.ui.button(label="Stand", style=discord.ButtonStyle.blurple)
+    async def stand(self, button: discord.Button, interaction: discord.Interaction):
+        # 1. Make sure that the user is the person is the person whose turn it is
+        if interaction.user._user != self.game.current_player and interaction.user._user in self.game.hands.keys():
+            await interaction.respond("It's not your turn!", ephemeral=True)
+            return
+        elif interaction.user._user != self.game.current_player:
+            await interaction.respond("You're not part of this game!", ephemeral=True)
+        # 2. Process turn
+        self.game.turn(False)
+        # 3. Check if it is a win, and if so, handle win state
+        if self.game.is_won():
+            end_embed = self.game.get_end_state_embed()
+            self.disable_all_items()
+            await interaction.message.edit(embed=end_embed, view=self)
+            return 
+        # 4. Else, continue on with game
+        embed = self.game.get_game_embed()
+        await interaction.message.edit(embed=end_embed, view=self)
+        
 class RequestBJGameView(discord.ui.View):
     def __init__(self, player1: discord.User, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -242,7 +287,8 @@ class RequestBJGameView(discord.ui.View):
         # 2. Add to ongoing games
         ONGOING_GAMES[interaction.message.id] = game 
         # 3. Edit message with embed 
-        await interaction.message.edit(game.get_game_embed()) # TODO: Add Blackjack view to this 
+        await interaction.message.edit(embed=game.get_game_embed(), view=BlackjackGameView(game))
+    
 
 ONGOING_GAMES = {}
 

@@ -22,6 +22,7 @@ if __name__ == "__main__":
     from dotenv import get_key
 
     cogs = [
+        "cogs.blackjack_cog"
     ]
     
     for cog in cogs:
