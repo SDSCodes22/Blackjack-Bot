@@ -1,20 +1,25 @@
 from multiprocessing import Value
 from typing import Type, Union
 import discord
-from discord.ext import commands, bridge
+from discord.ext import commands, bridge, tasks
 import random
 from utils import *
 import time 
 
+
+def _as_user(user: discord.User | discord.Member) -> discord.User:
+    return user._user if isinstance(user, discord.Member) else user
+
+
 # Blackjack Game Model 
 class BlackjackGame:
-    def __init__(self, player1: discord.User, player2: discord.User):
+    def __init__(self, player1: discord.User, player2: discord.User, message: discord.Message):
         self.player1 = player1
         self.player2 = player2
+        self.message = message
         self.deck = self.create_deck()
         self.hands = self.deal_starting_hands()
         self.has_stood = {player1: False, player2: False}
-        self.is_won = False
         self.current_player = player1
         self.last_turn_time = time.time()
     
@@ -103,16 +108,12 @@ class BlackjackGame:
             color = get_average_avatar_color(self.current_player.avatar.url)
         p1_scores = self.calculate_score(self.hands[self.player1])
         p2_scores = self.calculate_score(self.hands[self.player2])
+
+        description = f"{self.current_player.mention}'s turn\n\n**{self.player1.display_name}'s Hand ({'/'.join([str(i) for i in p1_scores])})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player1]])}\n\n**{self.player2.display_name}'s Hand ({'/'.join([str(i) for i in p2_scores])})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player2]])}"
         embed = discord.Embed(
             author=discord.EmbedAuthor(name=f"{self.player1.display_name} vs. {self.player2.display_name}"),
             thumbnail=self.current_player.avatar.url,
-            description=f"{self.current_player.mention}'s turn",
-            fields=[
-                discord.EmbedField(f"{self.player1.display_name}'s Hand ({'/'.join([str(i) for i in p1_scores])})",
-                                    ''.join([get_emoji(f"{key[0].title()}{key[1]}") for key in self.hands[self.player1]])),
-                discord.EmbedField(f"{self.player2.display_name}'s Hand ({'/'.join([str(i) for i in p2_scores])})",
-                                    ''.join([get_emoji(f"{key[0].title()}{key[1]}") for key in self.hands[self.player2]])),                    
-            ],
+            description=description,
             color=color
         )
         return embed
@@ -132,36 +133,33 @@ class BlackjackGame:
 
         # Case 1. It's a bust
         description = ""
+        winner = self.get_who_won()
         if self.is_bust(self.player1):
             description = f"{self.player1.mention} has busted! {self.player2.mention} wins!"
             p1_score = str(min(p1_scores))
-            p2_scores = '/'.join([str(i) for i in p2_scores])
+            p2_score = '/'.join([str(i) for i in p2_scores])
         elif self.is_bust(self.player2):
             description = f"{self.player2.mention} has busted! {self.player1.mention} wins!"
             p2_score = str(min(p2_scores))
-            p1_scores = '/'.join([str(i) for i in p1_scores])
+            p1_score = '/'.join([str(i) for i in p1_scores])
     
         # Case 2: Both players stood
-        winner = self.get_who_won()
-        if winner:
-            description = f"Both players have stood. {winner.mention} was closer to 21 and wins!"
         else:
-            description = f"The game has tied."
-        p1_diff = min([abs(i - 21) for i in p1_scores])
-        p2_diff = min([abs(i - 21) for i in p2_scores])
-        p1_score = str(21 - p1_diff)
-        p2_score = str(21 - p2_diff)
+            if winner:
+                description = f"Both players have stood.\n{winner.mention} was closer to 21 and wins!"
+            else:
+                description = f"The game has tied."
+            p1_diff = min([abs(i - 21) for i in p1_scores])
+            p2_diff = min([abs(i - 21) for i in p2_scores])
+            p1_score = str(21 - p1_diff)
+            p2_score = str(21 - p2_diff)
+
+        description += f"\n**{self.player1.display_name}'s Hand ({p1_score})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player1]])}\n\n**{self.player2.display_name}'s Hand ({p2_score})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player2]])}"
 
         embed = discord.Embed(
             author=discord.EmbedAuthor(name=f"{self.player1.display_name} vs. {self.player2.display_name}"),
             thumbnail=winner.avatar.url if winner else self.current_player.avatar.url,
             description = description,
-            fields=[
-                discord.EmbedField(f"{self.player1.display_name}'s Hand ({p1_score})",
-                                    ''.join([get_emoji(f"{key[0].title()}{key[1]}") for key in self.hands[self.player1]])),
-                discord.EmbedField(f"{self.player2.display_name}'s Hand ({p2_score})",
-                                    ''.join([get_emoji(f"{key[0].title()}{key[1]}") for key in self.hands[self.player2]])),                    
-            ],
             color=discord.Color.green() if winner else discord.Color.from_rgb(250, 245, 255)
         )
         return embed
@@ -187,6 +185,7 @@ class BlackjackGame:
         self.has_stood[self.current_player] = False
         # 3. Update current player
         self.current_player = self.player1 if self.current_player == self.player2 else self.player2
+        return new_card
     
     def is_game_over(self) -> bool:
         """
@@ -237,43 +236,45 @@ class BlackjackGameView(discord.ui.View):
     
     @discord.ui.button(label="Hit", style=discord.ButtonStyle.blurple)
     async def hit(self, button: discord.Button, interaction: discord.Interaction):
+        user = _as_user(interaction.user)
         # 1. Make sure that the user is the person is the person whose turn it is
-        if interaction.user._user != self.game.current_player and interaction.user._user in self.game.hands.keys():
+        if user != self.game.current_player and user in self.game.hands.keys():
             await interaction.respond("It's not your turn!", ephemeral=True)
             return
-        elif interaction.user._user != self.game.current_player:
+        elif user != self.game.current_player:
             await interaction.respond("You're not part of this game!", ephemeral=True)
         # 2. Process turn
         self.game.turn(True)
         # 3. Check if it is a win, and if so, handle win state
-        if self.game.is_won():
+        if self.game.is_game_over():
             end_embed = self.game.get_end_state_embed()
             self.disable_all_items()
-            await interaction.message.edit(embed=end_embed, view=self)
+            await interaction.response.edit_message(embed=end_embed, view=self)
             return 
         # 4. Else, continue on with game
         embed = self.game.get_game_embed()
-        await interaction.message.edit(embed=end_embed, view=self)
+        await interaction.response.edit_message(embed=embed, view=self)
     
-    @discord.ui.button(label="Stand", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Stand", style=discord.ButtonStyle.green)
     async def stand(self, button: discord.Button, interaction: discord.Interaction):
+        user = _as_user(interaction.user)
         # 1. Make sure that the user is the person is the person whose turn it is
-        if interaction.user._user != self.game.current_player and interaction.user._user in self.game.hands.keys():
+        if user != self.game.current_player and user in self.game.hands.keys():
             await interaction.respond("It's not your turn!", ephemeral=True)
             return
-        elif interaction.user._user != self.game.current_player:
+        elif user != self.game.current_player:
             await interaction.respond("You're not part of this game!", ephemeral=True)
         # 2. Process turn
         self.game.turn(False)
         # 3. Check if it is a win, and if so, handle win state
-        if self.game.is_won():
+        if self.game.is_game_over():
             end_embed = self.game.get_end_state_embed()
             self.disable_all_items()
-            await interaction.message.edit(embed=end_embed, view=self)
+            await interaction.response.edit_message(embed=end_embed, view=self)
             return 
         # 4. Else, continue on with game
         embed = self.game.get_game_embed()
-        await interaction.message.edit(embed=end_embed, view=self)
+        await interaction.response.edit_message(embed=embed, view=self)
         
 class RequestBJGameView(discord.ui.View):
     def __init__(self, player1: discord.User, *args, **kwargs):
@@ -282,25 +283,58 @@ class RequestBJGameView(discord.ui.View):
     
     @discord.ui.button(label="✓", style=discord.ButtonStyle.green)
     async def create_game(self, button: discord.Button, interaction: discord.Interaction):
+        player2 = _as_user(interaction.user)
+        if player2 == self.player1:
+            await interaction.respond("You cannot play against yourself!", ephemeral=True)
+            return
         # 1. Make a BlackjackGame instance
-        game = BlackjackGame(self.player1, interaction.user._user)
+        game = BlackjackGame(self.player1, player2, interaction.message)
         # 2. Add to ongoing games
         ONGOING_GAMES[interaction.message.id] = game 
         # 3. Edit message with embed 
-        await interaction.message.edit(embed=game.get_game_embed(), view=BlackjackGameView(game))
+        await interaction.response.edit_message(embed=game.get_game_embed(), view=BlackjackGameView(game))
     
 
 ONGOING_GAMES = {}
 
 class BlackjackCog(commands.Cog):
     def __init__(self, bot): 
-        self.bot = bot    
-    @bridge.bridge_command(description="Challenge someone to a game of Blackjack!")
+        self.bot = bot
+        self.expire_inactive_games.start()
+
+    def cog_unload(self):
+        self.expire_inactive_games.cancel()
+
+    @tasks.loop(seconds=30)
+    async def expire_inactive_games(self):
+        current_time = time.time()
+        for message_id, game in list(ONGOING_GAMES.items()):
+            if current_time - game.last_turn_time <= 300:
+                continue
+
+            if ONGOING_GAMES.get(message_id) is not game:
+                continue
+
+            del ONGOING_GAMES[message_id]
+            timed_out_embed = discord.Embed(
+                description="This game timed out.",
+                color=discord.Color.dark_grey(),
+            )
+            try:
+                await game.message.edit(embed=timed_out_embed, view=None)
+            except discord.NotFound:
+                pass
+
+    @expire_inactive_games.before_loop
+    async def before_expire_inactive_games(self):
+        await self.bot.wait_until_ready()
+
+    @bridge.bridge_command(description="Challenge someone to a game of Blackjack!", integration_types=[discord.IntegrationType.guild_install, discord.IntegrationType.user_install])
     async def bj(self, ctx: bridge.BridgeContext):            
         await ctx.respond(embed=discord.Embed(
             description=f"Click the button below to play blackjack with {ctx.author.mention if ctx.is_app else ctx.message.author.mention}",
             color=discord.Color.blurple()
-        ),view=RequestBJGameView(ctx.author._user if ctx.is_app else ctx.message.author._user))
+        ),view=RequestBJGameView(_as_user(ctx.author if ctx.is_app else ctx.message.author)))
 
 
     

@@ -39,4 +39,4 @@ def get_average_avatar_color(url: str) -> str:
             rgba.convert("RGB"),
             mask=rgba.getchannel("A"),
         ).mean
-        return "#{:02x}{:02x}{:02x}".format(*(round(color) for color in colors))
+        return int("{:02x}{:02x}{:02x}".format(*(round(color) for color in colors)), 16)
