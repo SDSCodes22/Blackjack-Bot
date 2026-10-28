@@ -251,11 +251,11 @@ class BlackjackGameView(discord.ui.View):
         if self.game.is_game_over():
             end_embed = self.game.get_end_state_embed()
             self.disable_all_items()
-            await interaction.response.edit_message(embed=end_embed, view=self)
+            await interaction.followup.edit_message(embed=end_embed, view=self)
             return 
         # 4. Else, continue on with game
         embed = self.game.get_game_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.followup.edit_message(embed=embed, view=self)
     
     @discord.ui.button(label="Stand", style=discord.ButtonStyle.green)
     async def stand(self, button: discord.Button, interaction: discord.Interaction):
@@ -273,11 +273,11 @@ class BlackjackGameView(discord.ui.View):
         if self.game.is_game_over():
             end_embed = self.game.get_end_state_embed()
             self.disable_all_items()
-            await interaction.response.edit_message(embed=end_embed, view=self)
+            await interaction.followup.edit_message(embed=end_embed, view=self)
             return 
         # 4. Else, continue on with game
         embed = self.game.get_game_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.followup.edit_message(embed=embed, view=self)
         
 class RequestBJGameView(discord.ui.View):
     def __init__(self, player1: discord.User, *args, **kwargs):
@@ -296,7 +296,7 @@ class RequestBJGameView(discord.ui.View):
         # 2. Add to ongoing games
         ONGOING_GAMES[interaction.message.id] = game 
         # 3. Edit message with embed 
-        await interaction.response.edit_message(embed=game.get_game_embed(), view=BlackjackGameView(game))
+        await interaction.followup.edit_message(embed=game.get_game_embed(), view=BlackjackGameView(game))
     
 
 ONGOING_GAMES = {}
