@@ -1,3 +1,4 @@
+import random
 import discord
 from discord.ext import bridge
 from loguru import logger as log
@@ -17,6 +18,11 @@ async def ping(ctx: bridge.BridgeContext):
         description=f"Latency: `{latency}ms`",
         color=discord.Color.red()
     ))
+
+@bot.bridge_command(name="flip", description="Flip a coin!")
+async def flip(ctx: bridge.BridgeContext):
+    user = ctx.message.author if not ctx.is_app else ctx.user 
+    await ctx.respond(f"{user.mention} {random.choice(["Heads", "Tails"])}")
 
 if __name__ == "__main__":
     from dotenv import get_key
