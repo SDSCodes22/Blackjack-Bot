@@ -155,7 +155,7 @@ class BlackjackGame:
             p1_score = str(21 - p1_diff)
             p2_score = str(21 - p2_diff)
 
-        description += f"\n**{self.player1.display_name}'s Hand ({p1_score})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player1]])}\n\n**{self.player2.display_name}'s Hand ({p2_score})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player2]])}"
+        description += f"\n\n**{self.player1.display_name}'s Hand ({p1_score})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player1]])}\n\n**{self.player2.display_name}'s Hand ({p2_score})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player2]])}"
 
         embed = discord.Embed(
             author=discord.EmbedAuthor(name=f"{self.player1.display_name} vs. {self.player2.display_name}"),
