@@ -237,6 +237,7 @@ class BlackjackGameView(discord.ui.View):
     
     @discord.ui.button(label="Hit", style=discord.ButtonStyle.blurple)
     async def hit(self, button: discord.Button, interaction: discord.Interaction):
+        await interaction.response.defer()
         user = _as_user(interaction.user)
         # 1. Make sure that the user is the person is the person whose turn it is
         if user != self.game.current_player and user in self.game.hands.keys():
@@ -258,6 +259,7 @@ class BlackjackGameView(discord.ui.View):
     
     @discord.ui.button(label="Stand", style=discord.ButtonStyle.green)
     async def stand(self, button: discord.Button, interaction: discord.Interaction):
+        await interaction.response.defer()
         user = _as_user(interaction.user)
         # 1. Make sure that the user is the person is the person whose turn it is
         if user != self.game.current_player and user in self.game.hands.keys():
@@ -284,6 +286,7 @@ class RequestBJGameView(discord.ui.View):
     
     @discord.ui.button(emoji="<:checkmark:1565005454956957696>", style=discord.ButtonStyle.green)
     async def create_game(self, button: discord.Button, interaction: discord.Interaction):
+        await interaction.response.defer()
         player2 = _as_user(interaction.user)
         if player2 == self.player1:
             await interaction.respond("You cannot play against yourself!", ephemeral=True)
