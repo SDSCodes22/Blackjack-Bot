@@ -197,4 +197,5 @@ tiers.json
 tiers_*.json
 tests.json
 service_account.json
+migration.py
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,python

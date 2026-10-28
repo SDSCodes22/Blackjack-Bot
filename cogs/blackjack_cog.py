@@ -2,6 +2,7 @@ from multiprocessing import Value
 from typing import Type, Union
 import discord
 from discord.ext import commands, bridge, tasks
+from loguru import logger as log
 import random
 from utils import *
 import time 
@@ -281,7 +282,7 @@ class RequestBJGameView(discord.ui.View):
         super().__init__(*args, **kwargs)
         self.player1 = player1
     
-    @discord.ui.button(label="✓", style=discord.ButtonStyle.green)
+    @discord.ui.button(emoji="<:checkmark:1565005454956957696>", style=discord.ButtonStyle.green)
     async def create_game(self, button: discord.Button, interaction: discord.Interaction):
         player2 = _as_user(interaction.user)
         if player2 == self.player1:
@@ -324,6 +325,12 @@ class BlackjackCog(commands.Cog):
                 await game.message.edit(embed=timed_out_embed, view=None)
             except discord.NotFound:
                 pass
+            except discord.Forbidden as error:
+                log.warning(
+                    "Could not edit timed-out game message {}: {}",
+                    message_id,
+                    error,
+                )
 
     @expire_inactive_games.before_loop
     async def before_expire_inactive_games(self):
@@ -332,7 +339,7 @@ class BlackjackCog(commands.Cog):
     @bridge.bridge_command(description="Challenge someone to a game of Blackjack!", integration_types=[discord.IntegrationType.guild_install, discord.IntegrationType.user_install])
     async def bj(self, ctx: bridge.BridgeContext):            
         await ctx.respond(embed=discord.Embed(
-            description=f"Click the button below to play blackjack with {ctx.author.mention if ctx.is_app else ctx.message.author.mention}",
+            description=f"Click the button below to play Blackjack with {ctx.author.mention if ctx.is_app else ctx.message.author.mention}",
             color=discord.Color.blurple()
         ),view=RequestBJGameView(_as_user(ctx.author if ctx.is_app else ctx.message.author)))
 
