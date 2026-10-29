@@ -202,6 +202,12 @@ class BlackjackGame:
         # Case 2: One of the players has bust
         if self.is_bust(self.player1) or self.is_bust(self.player2):
             return True 
+        # Case 3: Player 2 stood, and player 2 has less or the same value 
+        p1_scores = self.calculate_score(self.hands[self.player1])
+        p2_scores = self.calculate_score(self.hands[self.player2])
+        if self.current_player == self.player1 and self.has_stood[self.player2] and max(p2_scores) <= max(p1_scores):
+            return True
+        
         return False
     
     def get_who_won(self) -> Union[discord.User, None]:
