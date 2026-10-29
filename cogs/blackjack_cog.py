@@ -148,7 +148,7 @@ class BlackjackGame:
         # Case 2: Both players stood
         else:
             if winner:
-                description = f"Both players have stood.\n{winner.mention} was closer to 21 and wins!"
+                description = f"{winner.mention} was closer to 21 and wins!"
             else:
                 description = f"The game has tied."
             p1_diff = min([abs(i - 21) for i in p1_scores])
