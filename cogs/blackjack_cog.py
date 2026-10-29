@@ -93,7 +93,7 @@ class BlackjackGame:
         scores = self.calculate_score(hand)
         return min(scores) > 21
     
-    def get_game_embed(self) -> discord.Embed:
+    async def get_game_embed(self) -> discord.Embed:
         """
         Generates an embed with the current state of the game
 
@@ -106,15 +106,16 @@ class BlackjackGame:
 
         # Calculate the average colour of the user's profile picture
         color = discord.Color.blurple()
-        if self.current_player.avatar.url:
-            color = get_average_avatar_color(self.current_player.avatar.url)
+        avatar_url = self.current_player.display_avatar.url
+        if avatar_url:
+            color = await get_average_avatar_color(avatar_url)
         p1_scores = self.calculate_score(self.hands[self.player1])
         p2_scores = self.calculate_score(self.hands[self.player2])
 
         description = f"{self.current_player.mention}'s turn\n\n**{self.player1.display_name}'s Hand ({'/'.join([str(i) for i in p1_scores])})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player1]])}\n\n**{self.player2.display_name}'s Hand ({'/'.join([str(i) for i in p2_scores])})**\n# {''.join([get_emoji(f"{key[1].title()}{key[0]}") for key in self.hands[self.player2]])}"
         embed = discord.Embed(
             author=discord.EmbedAuthor(name=f"{self.player1.display_name} vs. {self.player2.display_name}"),
-            thumbnail=self.current_player.avatar.url,
+            thumbnail=avatar_url,
             description=description,
             color=color
         )
@@ -160,7 +161,11 @@ class BlackjackGame:
 
         embed = discord.Embed(
             author=discord.EmbedAuthor(name=f"{self.player1.display_name} vs. {self.player2.display_name}"),
-            thumbnail=winner.avatar.url if winner else self.current_player.avatar.url,
+            thumbnail=(
+                winner.display_avatar.url
+                if winner
+                else self.current_player.display_avatar.url
+            ),
             description = description,
             color=discord.Color.green() if winner else discord.Color.from_rgb(250, 245, 255)
         )
@@ -260,17 +265,18 @@ class BlackjackGameView(discord.ui.View):
             return
         elif user != self.game.current_player:
             await interaction.respond("You're not part of this game!", ephemeral=True)
+            return
         # 2. Process turn
         self.game.turn(True)
         # 3. Check if it is a win, and if so, handle win state
         if self.game.is_game_over():
             end_embed = self.game.get_end_state_embed()
             self.disable_all_items()
-            await interaction.followup.edit_message(message_id=(await interaction.original_message()).id, embed=end_embed, view=self)
+            await interaction.followup.edit_message(message_id=interaction.message.id, embed=end_embed, view=self)
             return 
         # 4. Else, continue on with game
-        embed = self.game.get_game_embed()
-        await interaction.followup.edit_message(message_id=(await interaction.original_message()).id, embed=embed, view=self)
+        embed = await self.game.get_game_embed()
+        await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self)
     
     @discord.ui.button(label="Stand", style=discord.ButtonStyle.green)
     async def stand(self, button: discord.Button, interaction: discord.Interaction):
@@ -282,17 +288,18 @@ class BlackjackGameView(discord.ui.View):
             return
         elif user != self.game.current_player:
             await interaction.respond("You're not part of this game!", ephemeral=True)
+            return
         # 2. Process turn
         self.game.turn(False)
         # 3. Check if it is a win, and if so, handle win state
         if self.game.is_game_over():
             end_embed = self.game.get_end_state_embed()
             self.disable_all_items()
-            await interaction.followup.edit_message(message_id=(await interaction.original_message()).id, embed=end_embed, view=self)
+            await interaction.followup.edit_message(message_id=interaction.message.id, embed=end_embed, view=self)
             return 
         # 4. Else, continue on with game
-        embed = self.game.get_game_embed()
-        await interaction.followup.edit_message(message_id=(await interaction.original_message()).id, embed=embed, view=self)
+        embed = await self.game.get_game_embed()
+        await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=self)
         
 class RequestBJGameView(discord.ui.View):
     def __init__(self, player1: discord.User, *args, **kwargs):
@@ -311,7 +318,7 @@ class RequestBJGameView(discord.ui.View):
         # 2. Add to ongoing games
         ONGOING_GAMES[interaction.message.id] = game 
         # 3. Edit message with embed 
-        await interaction.followup.edit_message(message_id=(await interaction.original_message()).id, embed=game.get_game_embed(), view=BlackjackGameView(game))
+        await interaction.followup.edit_message(message_id=interaction.message.id, embed=await game.get_game_embed(), view=BlackjackGameView(game))
     
 
 ONGOING_GAMES = {}

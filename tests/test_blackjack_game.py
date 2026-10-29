@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from cogs import blackjack_cog
 from cogs.blackjack_cog import BlackjackGame
@@ -16,6 +16,11 @@ class FakeUser:
         self.display_name = display_name or f"Player {user_id}"
         self.mention = f"<@{user_id}>"
         self.avatar = FakeAvatar(avatar_url)
+        self.default_avatar = FakeAvatar(f"https://example.test/default-{user_id}.png")
+
+    @property
+    def display_avatar(self):
+        return self.avatar if self.avatar.url else self.default_avatar
 
     def __hash__(self):
         return hash(self.id)
@@ -24,7 +29,7 @@ class FakeUser:
         return isinstance(other, FakeUser) and self.id == other.id
 
 
-class BlackjackGameTests(unittest.TestCase):
+class BlackjackGameTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.player1 = FakeUser(1, "Alice")
         self.player2 = FakeUser(2, "Bob")
@@ -331,14 +336,14 @@ class BlackjackGameTests(unittest.TestCase):
         self.assertEqual(self.game.calculate_score(self.game.hands[self.player1]), [20, 10])
         self.assertEqual(self.game.get_who_won(), self.player1)
 
-    def test_live_embed_is_rejected_after_game_ends(self):
+    async def test_live_embed_is_rejected_after_game_ends(self):
         """Checks a live-game embed is expected to be unavailable once the game has ended."""
         self.game.has_stood = {self.player1: True, self.player2: True}
 
         with self.assertRaises(TypeError):
-            self.game.get_game_embed()
+            await self.game.get_game_embed()
 
-    def test_live_embed_is_rejected_if_a_player_busts(self):
+    async def test_live_embed_is_rejected_if_a_player_busts(self):
         """Checks a live-game embed is expected to be unavailable after a bust."""
         self.set_hands(
             [("10", "Hearts"), ("8", "Clubs"), ("5", "Spades")],
@@ -346,22 +351,27 @@ class BlackjackGameTests(unittest.TestCase):
         )
 
         with self.assertRaises(TypeError):
-            self.game.get_game_embed()
+            await self.game.get_game_embed()
 
     def test_end_embed_is_rejected_before_game_ends(self):
         """Checks an end-of-game embed is expected to be unavailable before the game ends."""
         with self.assertRaises(ValueError):
             self.game.get_end_state_embed()
 
-    def test_live_embed_shows_turn_players_hands_and_possible_scores(self):
+    async def test_live_embed_shows_turn_players_hands_and_possible_scores(self):
         """Checks the live embed includes the current player, both hands, possible scores, color, and avatar."""
         self.set_hands([("A", "Hearts"), ("6", "Clubs")], [("10", "Diamonds"), ("7", "Spades")])
         self.game.current_player = self.player1
         with (
-            patch.object(blackjack_cog, "get_average_avatar_color", return_value=0x123456),
+            patch.object(
+                blackjack_cog,
+                "get_average_avatar_color",
+                new_callable=AsyncMock,
+                return_value=0x123456,
+            ),
             patch.object(blackjack_cog, "get_emoji", side_effect=lambda key: f"[{key}]"),
         ):
-            embed = self.game.get_game_embed()
+            embed = await self.game.get_game_embed()
 
         self.assertIn("<@1>'s turn", embed.description)
         self.assertIn("Alice's Hand (17/7)", embed.description)
@@ -370,14 +380,24 @@ class BlackjackGameTests(unittest.TestCase):
         self.assertEqual(embed.thumbnail.url, self.player1.avatar.url)
         self.assertEqual(embed.color.value, 0x123456)
 
-    def test_live_embed_uses_default_color_without_avatar_url(self):
-        """Checks the live embed falls back to blurple when the current player has no avatar URL."""
+    async def test_live_embed_uses_default_avatar_when_custom_avatar_is_missing(self):
+        """Checks a user's default profile avatar is used for thumbnail and color when no custom avatar exists."""
         self.player1.avatar.url = None
         self.game.current_player = self.player1
-        with patch.object(blackjack_cog, "get_emoji", side_effect=lambda key: key):
-            embed = self.game.get_game_embed()
+        with (
+            patch.object(
+                blackjack_cog,
+                "get_average_avatar_color",
+                new_callable=AsyncMock,
+                return_value=0xABCDEF,
+            ) as get_color,
+            patch.object(blackjack_cog, "get_emoji", side_effect=lambda key: key),
+        ):
+            embed = await self.game.get_game_embed()
 
-        self.assertEqual(embed.color, blackjack_cog.discord.Color.blurple())
+        self.assertEqual(embed.thumbnail.url, self.player1.default_avatar.url)
+        self.assertEqual(embed.color.value, 0xABCDEF)
+        get_color.assert_awaited_once_with(self.player1.default_avatar.url)
 
     def test_end_embed_reports_bust_winner(self):
         """Checks a bust end embed names the winner and displays each hand's relevant total."""
@@ -392,6 +412,18 @@ class BlackjackGameTests(unittest.TestCase):
         self.assertIn("Alice's Hand (23)", embed.description)
         self.assertIn("Bob's Hand (17)", embed.description)
         self.assertEqual(embed.thumbnail.url, self.player2.avatar.url)
+
+    def test_end_embed_uses_winners_default_avatar_without_custom_avatar(self):
+        """Checks the end embed uses the winner's default profile avatar when their custom avatar is missing."""
+        self.set_hands(
+            [("10", "Hearts"), ("8", "Clubs"), ("5", "Spades")],
+            [("10", "Diamonds"), ("7", "Clubs")],
+        )
+        self.player2.avatar.url = None
+        with patch.object(blackjack_cog, "get_emoji", side_effect=lambda key: f"[{key}]"):
+            embed = self.game.get_end_state_embed()
+
+        self.assertEqual(embed.thumbnail.url, self.player2.default_avatar.url)
 
     def test_end_embed_reports_stand_winner_and_resolved_scores(self):
         """Checks a stand end embed names the winner and shows the scores used to compare hands."""
@@ -415,6 +447,17 @@ class BlackjackGameTests(unittest.TestCase):
         self.assertIn("The game has tied.", embed.description)
         self.assertIn("Alice's Hand (19)", embed.description)
         self.assertIn("Bob's Hand (19)", embed.description)
+
+    def test_tied_end_embed_uses_current_players_default_avatar(self):
+        """Checks the tie embed uses the current player's default avatar when no winner is available."""
+        self.set_hands([("10", "Hearts"), ("9", "Clubs")], [("10", "Diamonds"), ("9", "Spades")])
+        self.game.has_stood = {self.player1: True, self.player2: True}
+        self.player1.avatar.url = None
+        self.game.current_player = self.player1
+        with patch.object(blackjack_cog, "get_emoji", side_effect=lambda key: f"[{key}]"):
+            embed = self.game.get_end_state_embed()
+
+        self.assertEqual(embed.thumbnail.url, self.player1.default_avatar.url)
 
 
 if __name__ == "__main__":

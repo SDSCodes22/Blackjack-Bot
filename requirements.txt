@@ -1,5 +1,6 @@
 Pillow>=9.1
+aiohttp
+async-lru
 loguru
 py-cord
 python-dotenv
-requests
