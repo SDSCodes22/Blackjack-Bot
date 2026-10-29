@@ -100,7 +100,7 @@ class BlackjackGame:
             discord.Embed: The embed representing the game's current state
         NOTE: This should not be used if the game is in a Won state
         """
-        if self.is_game_over(): raise TypeError("get_game_embed() was called when the game was in a Won state")
+        # if self.is_game_over(): raise TypeError("get_game_embed() was called when the game was in a Won state")
         if self.is_bust(self.player1) or self.is_bust(self.player2): raise TypeError("get_game_embed() was called when the game was in a Won state")
 
         # Calculate the average colour of the user's profile picture
@@ -125,7 +125,7 @@ class BlackjackGame:
         Returns:
             discord.Embed: The embed in question
         """
-        if not self.is_game_over(): raise ValueError("get_end_state_embed() was called when game was not in a Won state")
+        # if not self.is_game_over(): raise ValueError("get_end_state_embed() was called when game was not in a Won state")
         # We need to get the scores actually considered for getting the winner
         p1_scores = self.calculate_score(self.hands[self.player1])
         p2_scores = self.calculate_score(self.hands[self.player2])
@@ -217,7 +217,7 @@ class BlackjackGame:
         Returns:
             Union[discord.User, None]: The player who has won the game, or None if it is a tie.
         """
-        if not self.is_game_over(): raise ValueError("get_who_won() was called when game is not in a won state")
+        # if not self.is_game_over(): raise ValueError("get_who_won() was called when game is not in a won state")
         # Case 1: One of the players has bust - the other player must be the winner.
         if self.is_bust(self.player1):
             return self.player2 
