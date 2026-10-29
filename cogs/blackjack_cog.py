@@ -23,6 +23,7 @@ class BlackjackGame:
         self.has_stood = {player1: False, player2: False}
         self.current_player = player1
         self.last_turn_time = time.time()
+        self.turns_played = 0
     
     def create_deck(self):
         """
@@ -178,6 +179,7 @@ class BlackjackGame:
             self.has_stood[self.current_player] = True
             # Hands and deck aren't updated 
             self.current_player = self.player1 if self.current_player == self.player2 else self.player2
+            self.turns_played += 1
             return 
         # 1. Deal new card
         new_card = self.deck.pop()
@@ -186,7 +188,10 @@ class BlackjackGame:
         self.has_stood[self.current_player] = False
         # 3. Update current player
         self.current_player = self.player1 if self.current_player == self.player2 else self.player2
+        # 4. Update turns played 
+        self.turns_played += 1
         return new_card
+        
     
     def is_game_over(self) -> bool:
         """
@@ -207,7 +212,11 @@ class BlackjackGame:
         p2_scores = self.calculate_score(self.hands[self.player2])
         if self.current_player == self.player1 and self.has_stood[self.player2] and max(p2_scores) <= max(p1_scores):
             return True
-        
+        # Case 4: On the first turn, Player 1 hit and has less value than Player 2 and Player 2 stands
+        if self.turns_played == 2 and \
+        (list(self.has_stood.values())[0] == False and list(self.has_stood.values())[1] == True) and \
+        max(p1_scores) < max(p2_scores): 
+            return True 
         return False
     
     def get_who_won(self) -> Union[discord.User, None]:
