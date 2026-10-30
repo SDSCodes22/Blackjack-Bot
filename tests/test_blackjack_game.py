@@ -138,6 +138,12 @@ class BlackjackGameTests(unittest.IsolatedAsyncioTestCase):
             [14, 4],
         )
 
+    def test_calculate_score_does_not_return_bust_total_when_many_aces_have_valid_total(self):
+        """Checks many aces do not produce a bust total that could beat a valid hand."""
+        hand = [("A", "Hearts")] * 12
+
+        self.assertEqual(self.game.calculate_score(hand), [12])
+
     def test_calculate_score_keeps_over_21_values_for_busted_hands(self):
         """Checks a hand with no usable ace still reports its over-21 total."""
         self.assertEqual(

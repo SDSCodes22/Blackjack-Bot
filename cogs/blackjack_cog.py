@@ -337,6 +337,9 @@ class BlackjackCog(commands.Cog):
         for message_id, game in list(ONGOING_GAMES.items()):
             if current_time - game.last_turn_time <= 300:
                 continue
+            if game.is_game_over():
+                del ONGOING_GAMES[message_id]
+                continue
 
             if ONGOING_GAMES.get(message_id) is not game:
                 continue
